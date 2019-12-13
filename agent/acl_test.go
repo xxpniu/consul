@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"io"
-	"os"
 	"testing"
 	"time"
 

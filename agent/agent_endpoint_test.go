@@ -1248,7 +1248,7 @@ func TestAgent_Reload(t *testing.T) {
 		t.Fatal("missing redis service")
 	}
 
-	cfg2 := TestConfig(testutil.TestLogger(t), config.Source{
+	cfg2 := TestConfig(testutil.LogShim(testutil.Logger(t)), config.Source{
 		Name:   "reload",
 		Format: "hcl",
 		Data: `

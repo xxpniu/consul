@@ -70,6 +70,44 @@ const (
 	tokenRoleResolutionMaxRetries = 5
 )
 
+// missingIdentity is used to return some identity in the event that the real identity cannot be ascertained
+type missingIdentity struct {
+	reason string
+	token  string
+}
+
+func (id *missingIdentity) ID() string {
+	return id.reason
+}
+
+func (id *missingIdentity) SecretToken() string {
+	return id.token
+}
+
+func (id *missingIdentity) PolicyIDs() []string {
+	return nil
+}
+
+func (id *missingIdentity) RoleIDs() []string {
+	return nil
+}
+
+func (id *missingIdentity) EmbeddedPolicy() *structs.ACLPolicy {
+	return nil
+}
+
+func (id *missingIdentity) ServiceIdentityList() []*structs.ACLServiceIdentity {
+	return nil
+}
+
+func (id *missingIdentity) IsExpired(asOf time.Time) bool {
+	return false
+}
+
+func (id *missingIdentity) EnterpriseMetadata() *structs.EnterpriseMeta {
+	return structs.DefaultEnterpriseMeta()
+}
+
 func minTTL(a time.Duration, b time.Duration) time.Duration {
 	if a < b {
 		return a
@@ -132,7 +170,7 @@ type ACLResolverConfig struct {
 	AutoDisable bool
 
 	// EnterpriseACLConfig contains Consul Enterprise specific ACL configuration
-	EnterpriseConfig *acl.EnterpriseACLConfig
+	EnterpriseConfig *acl.Config
 }
 
 // ACLResolver is the type to handle all your token and policy resolution needs.
@@ -166,7 +204,7 @@ type ACLResolver struct {
 	logger2 hclog.Logger
 
 	delegate ACLResolverDelegate
-	entConf  *acl.EnterpriseACLConfig
+	entConf  *acl.Config
 
 	cache         *structs.ACLCaches
 	identityGroup singleflight.Group
@@ -294,7 +332,7 @@ func (r *ACLResolver) fetchAndCacheTokenLegacy(token string, cached *structs.Aut
 	}
 }
 
-func (r *ACLResolver) resolveTokenLegacy(token string) (acl.Authorizer, error) {
+func (r *ACLResolver) resolveTokenLegacy(token string) (structs.ACLIdentity, acl.Authorizer, error) {
 	defer metrics.MeasureSince([]string{"acl", "resolveTokenLegacy"}, time.Now())
 
 	// Attempt to resolve locally first (local results are not cached)
@@ -304,18 +342,23 @@ func (r *ACLResolver) resolveTokenLegacy(token string) (acl.Authorizer, error) {
 		if err == nil && identity != nil {
 			policies, err := r.resolvePoliciesForIdentity(identity)
 			if err != nil {
-				return nil, err
+				return identity, nil, err
 			}
 
 			authz, err := policies.Compile(r.cache, r.entConf)
 			if err != nil {
-				return nil, err
+				return identity, nil, err
 			}
 
-			return acl.NewChainedAuthorizer([]acl.Authorizer{authz, acl.RootAuthorizer(r.config.ACLDefaultPolicy)}), nil
+			return identity, acl.NewChainedAuthorizer([]acl.Authorizer{authz, acl.RootAuthorizer(r.config.ACLDefaultPolicy)}), nil
 		}
 
-		return nil, err
+		return nil, nil, err
+	}
+
+	identity := &missingIdentity{
+		reason: "legacy-token",
+		token:  token,
 	}
 
 	// Look in the cache prior to making a RPC request
@@ -324,9 +367,9 @@ func (r *ACLResolver) resolveTokenLegacy(token string) (acl.Authorizer, error) {
 	if entry != nil && entry.Age() <= minTTL(entry.TTL, r.config.ACLTokenTTL) {
 		metrics.IncrCounter([]string{"acl", "token", "cache_hit"}, 1)
 		if entry.Authorizer != nil {
-			return entry.Authorizer, nil
+			return identity, entry.Authorizer, nil
 		}
-		return nil, acl.ErrNotFound
+		return identity, nil, acl.ErrNotFound
 	}
 
 	metrics.IncrCounter([]string{"acl", "token", "cache_miss"}, 1)
@@ -341,9 +384,9 @@ func (r *ACLResolver) resolveTokenLegacy(token string) (acl.Authorizer, error) {
 	if !waitForResult {
 		// waitForResult being false requires the cacheEntry to not be nil
 		if entry.Authorizer != nil {
-			return entry.Authorizer, nil
+			return identity, entry.Authorizer, nil
 		}
-		return nil, acl.ErrNotFound
+		return identity, nil, acl.ErrNotFound
 	}
 
 	// block waiting for the async RPC to finish.
@@ -354,7 +397,7 @@ func (r *ACLResolver) resolveTokenLegacy(token string) (acl.Authorizer, error) {
 		authorizer = res.Val.(acl.Authorizer)
 	}
 
-	return authorizer, res.Err
+	return identity, authorizer, res.Err
 }
 
 func (r *ACLResolver) fetchAndCacheIdentityFromToken(token string, cached *structs.IdentityCacheEntry) (structs.ACLIdentity, error) {
@@ -994,13 +1037,13 @@ func (r *ACLResolver) disableACLsWhenUpstreamDisabled(err error) error {
 	return err
 }
 
-func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
+func (r *ACLResolver) ResolveTokenToIdentityAndAuthorizer(token string) (structs.ACLIdentity, acl.Authorizer, error) {
 	if !r.ACLsEnabled() {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	if acl.RootAuthorizer(token) != nil {
-		return nil, acl.ErrRootDenied
+		return nil, nil, acl.ErrRootDenied
 	}
 
 	// handle the anonymous token
@@ -1009,8 +1052,8 @@ func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
 	}
 
 	if r.delegate.UseLegacyACLs() {
-		authorizer, err := r.resolveTokenLegacy(token)
-		return authorizer, r.disableACLsWhenUpstreamDisabled(err)
+		identity, authorizer, err := r.resolveTokenLegacy(token)
+		return identity, authorizer, r.disableACLsWhenUpstreamDisabled(err)
 	}
 
 	defer metrics.MeasureSince([]string{"acl", "ResolveToken"}, time.Now())
@@ -1020,10 +1063,10 @@ func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
 		r.disableACLsWhenUpstreamDisabled(err)
 		if IsACLRemoteError(err) {
 			r.logger.Printf("[ERR] consul.acl: %v", err)
-			return r.down, nil
+			return &missingIdentity{reason: "primary-dc-down", token: token}, r.down, nil
 		}
 
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Build the Authorizer
@@ -1031,7 +1074,7 @@ func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
 
 	authz, err := policies.Compile(r.cache, r.entConf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	chain = append(chain, authz)
 
@@ -1039,15 +1082,20 @@ func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
 	if err != nil {
 		if IsACLRemoteError(err) {
 			r.logger.Printf("[ERR] consul.acl: %v", err)
-			return r.down, nil
+			return identity, r.down, nil
 		}
-		return nil, err
+		return nil, nil, err
 	} else if authz != nil {
 		chain = append(chain, authz)
 	}
 
 	chain = append(chain, acl.RootAuthorizer(r.config.ACLDefaultPolicy))
-	return acl.NewChainedAuthorizer(chain), nil
+	return identity, acl.NewChainedAuthorizer(chain), nil
+}
+
+func (r *ACLResolver) ResolveToken(token string) (acl.Authorizer, error) {
+	_, authz, err := r.ResolveTokenToIdentityAndAuthorizer(token)
+	return authz, err
 }
 
 func (r *ACLResolver) ACLsEnabled() bool {
@@ -1106,7 +1154,7 @@ func newACLFilter(authorizer acl.Authorizer, logger *log.Logger, logger2 hclog.L
 }
 
 // allowNode is used to determine if a node is accessible for an ACL.
-func (f *aclFilter) allowNode(node string, ent *acl.EnterpriseAuthorizerContext) bool {
+func (f *aclFilter) allowNode(node string, ent *acl.AuthorizerContext) bool {
 	if !f.enforceVersion8 {
 		return true
 	}
@@ -1115,7 +1163,7 @@ func (f *aclFilter) allowNode(node string, ent *acl.EnterpriseAuthorizerContext)
 }
 
 // allowService is used to determine if a service is accessible for an ACL.
-func (f *aclFilter) allowService(service string, ent *acl.EnterpriseAuthorizerContext) bool {
+func (f *aclFilter) allowService(service string, ent *acl.AuthorizerContext) bool {
 	if service == "" {
 		return true
 	}
@@ -1128,7 +1176,7 @@ func (f *aclFilter) allowService(service string, ent *acl.EnterpriseAuthorizerCo
 
 // allowSession is used to determine if a session for a node is accessible for
 // an ACL.
-func (f *aclFilter) allowSession(node string, ent *acl.EnterpriseAuthorizerContext) bool {
+func (f *aclFilter) allowSession(node string, ent *acl.AuthorizerContext) bool {
 	if !f.enforceVersion8 {
 		return true
 	}
@@ -1139,7 +1187,7 @@ func (f *aclFilter) allowSession(node string, ent *acl.EnterpriseAuthorizerConte
 // the configured ACL rules for a token.
 func (f *aclFilter) filterHealthChecks(checks *structs.HealthChecks) {
 	hc := *checks
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 
 	for i := 0; i < len(hc); i++ {
 		check := hc[i]
@@ -1157,7 +1205,7 @@ func (f *aclFilter) filterHealthChecks(checks *structs.HealthChecks) {
 
 // filterServices is used to filter a set of services based on ACLs.
 func (f *aclFilter) filterServices(services structs.Services, entMeta *structs.EnterpriseMeta) {
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	entMeta.FillAuthzContext(&authzContext)
 
 	for svc := range services {
@@ -1173,7 +1221,7 @@ func (f *aclFilter) filterServices(services structs.Services, entMeta *structs.E
 // based on the configured ACL rules.
 func (f *aclFilter) filterServiceNodes(nodes *structs.ServiceNodes) {
 	sn := *nodes
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 
 	for i := 0; i < len(sn); i++ {
 		node := sn[i]
@@ -1195,7 +1243,7 @@ func (f *aclFilter) filterNodeServices(services **structs.NodeServices) {
 		return
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.WildcardEnterpriseMeta().FillAuthzContext(&authzContext)
 	if !f.allowNode((*services).Node.Node, &authzContext) {
 		*services = nil
@@ -1219,7 +1267,7 @@ func (f *aclFilter) filterNodeServiceList(services **structs.NodeServiceList) {
 		return
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.WildcardEnterpriseMeta().FillAuthzContext(&authzContext)
 	if !f.allowNode((*services).Node.Node, &authzContext) {
 		*services = nil
@@ -1252,7 +1300,7 @@ func (f *aclFilter) filterNodeServiceList(services **structs.NodeServiceList) {
 // filterCheckServiceNodes is used to filter nodes based on ACL rules.
 func (f *aclFilter) filterCheckServiceNodes(nodes *structs.CheckServiceNodes) {
 	csn := *nodes
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 
 	for i := 0; i < len(csn); i++ {
 		node := csn[i]
@@ -1273,7 +1321,7 @@ func (f *aclFilter) filterSessions(sessions *structs.Sessions) {
 	for i := 0; i < len(s); i++ {
 		session := s[i]
 
-		var entCtx acl.EnterpriseAuthorizerContext
+		var entCtx acl.AuthorizerContext
 		session.FillAuthzContext(&entCtx)
 
 		if f.allowSession(session.Node, &entCtx) {
@@ -1290,7 +1338,7 @@ func (f *aclFilter) filterSessions(sessions *structs.Sessions) {
 // rules.
 func (f *aclFilter) filterCoordinates(coords *structs.Coordinates) {
 	c := *coords
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.WildcardEnterpriseMeta().FillAuthzContext(&authzContext)
 
 	for i := 0; i < len(c); i++ {
@@ -1339,7 +1387,7 @@ func (f *aclFilter) filterIntentions(ixns *structs.Intentions) {
 func (f *aclFilter) filterNodeDump(dump *structs.NodeDump) {
 	nd := *dump
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	for i := 0; i < len(nd); i++ {
 		info := nd[i]
 
@@ -1384,7 +1432,7 @@ func (f *aclFilter) filterNodeDump(dump *structs.NodeDump) {
 func (f *aclFilter) filterNodes(nodes *structs.Nodes) {
 	n := *nodes
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.WildcardEnterpriseMeta().FillAuthzContext(&authzContext)
 
 	for i := 0; i < len(n); i++ {
@@ -1407,7 +1455,7 @@ func (f *aclFilter) filterNodes(nodes *structs.Nodes) {
 // captured tokens, but they can at least see whether or not a token is set.
 func (f *aclFilter) redactPreparedQueryTokens(query **structs.PreparedQuery) {
 	// Management tokens can see everything with no filtering.
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.DefaultEnterpriseMeta().FillAuthzContext(&authzContext)
 	if f.authorizer.ACLWrite(&authzContext) == acl.Allow {
 		return
@@ -1433,7 +1481,7 @@ func (f *aclFilter) redactPreparedQueryTokens(query **structs.PreparedQuery) {
 // We prune entries the user doesn't have access to, and we redact any tokens
 // if the user doesn't have a management token.
 func (f *aclFilter) filterPreparedQueries(queries *structs.PreparedQueries) {
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	structs.DefaultEnterpriseMeta().FillAuthzContext(&authzContext)
 	// Management tokens can see everything with no filtering.
 	// TODO  is this check even necessary - this looks like a search replace from
@@ -1465,7 +1513,7 @@ func (f *aclFilter) filterPreparedQueries(queries *structs.PreparedQueries) {
 }
 
 func (f *aclFilter) filterToken(token **structs.ACLToken) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if token == nil || *token == nil || f == nil {
 		return
 	}
@@ -1496,7 +1544,7 @@ func (f *aclFilter) filterTokens(tokens *structs.ACLTokens) {
 }
 
 func (f *aclFilter) filterTokenStub(token **structs.ACLTokenListStub) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if token == nil || *token == nil || f == nil {
 		return
 	}
@@ -1521,7 +1569,7 @@ func (f *aclFilter) filterTokenStubs(tokens *[]*structs.ACLTokenListStub) {
 }
 
 func (f *aclFilter) filterPolicy(policy **structs.ACLPolicy) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if policy == nil || *policy == nil || f == nil {
 		return
 	}
@@ -1547,7 +1595,7 @@ func (f *aclFilter) filterPolicies(policies *structs.ACLPolicies) {
 }
 
 func (f *aclFilter) filterRole(role **structs.ACLRole) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if role == nil || *role == nil || f == nil {
 		return
 	}
@@ -1573,7 +1621,7 @@ func (f *aclFilter) filterRoles(roles *structs.ACLRoles) {
 }
 
 func (f *aclFilter) filterBindingRule(rule **structs.ACLBindingRule) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if rule == nil || *rule == nil || f == nil {
 		return
 	}
@@ -1599,7 +1647,7 @@ func (f *aclFilter) filterBindingRules(rules *structs.ACLBindingRules) {
 }
 
 func (f *aclFilter) filterAuthMethod(method **structs.ACLAuthMethod) {
-	var entCtx acl.EnterpriseAuthorizerContext
+	var entCtx acl.AuthorizerContext
 	if method == nil || *method == nil || f == nil {
 		return
 	}
@@ -1748,7 +1796,7 @@ func vetRegisterWithACL(rule acl.Authorizer, subj *structs.RegisterRequest,
 		return nil
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	subj.FillAuthzContext(&authzContext)
 
 	// Vet the node info. This allows service updates to re-post the required
@@ -1775,7 +1823,7 @@ func vetRegisterWithACL(rule acl.Authorizer, subj *structs.RegisterRequest,
 				// This is effectively a delete, so we DO NOT apply the
 				// sentinel scope to the service we are overwriting, just
 				// the regular ACL policy.
-				var secondaryCtx acl.EnterpriseAuthorizerContext
+				var secondaryCtx acl.AuthorizerContext
 				other.FillAuthzContext(&secondaryCtx)
 
 				if rule.ServiceWrite(other.Service, &secondaryCtx) != acl.Allow {
@@ -1836,7 +1884,7 @@ func vetRegisterWithACL(rule acl.Authorizer, subj *structs.RegisterRequest,
 		// We are only adding a check here, so we don't add the scope,
 		// since the sentinel policy doesn't apply to adding checks at
 		// this time.
-		var secondaryCtx acl.EnterpriseAuthorizerContext
+		var secondaryCtx acl.AuthorizerContext
 		other.FillAuthzContext(&secondaryCtx)
 
 		if rule.ServiceWrite(other.Service, &secondaryCtx) != acl.Allow {
@@ -1863,7 +1911,7 @@ func vetDeregisterWithACL(rule acl.Authorizer, subj *structs.DeregisterRequest,
 	// We don't apply sentinel in this path, since at this time sentinel
 	// only applies to create and update operations.
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	// fill with the defaults for use with the NodeWrite check
 	subj.FillAuthzContext(&authzContext)
 
@@ -1920,7 +1968,7 @@ func vetNodeTxnOp(op *structs.TxnNodeOp, rule acl.Authorizer) error {
 		return nil
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	op.FillAuthzContext(&authzContext)
 
 	if rule != nil && rule.NodeWrite(op.Node.Node, &authzContext) != acl.Allow {
@@ -1937,7 +1985,7 @@ func vetServiceTxnOp(op *structs.TxnServiceOp, rule acl.Authorizer) error {
 		return nil
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	op.FillAuthzContext(&authzContext)
 
 	if rule.ServiceWrite(op.Service.Service, &authzContext) != acl.Allow {
@@ -1954,7 +2002,7 @@ func vetCheckTxnOp(op *structs.TxnCheckOp, rule acl.Authorizer) error {
 		return nil
 	}
 
-	var authzContext acl.EnterpriseAuthorizerContext
+	var authzContext acl.AuthorizerContext
 	op.FillAuthzContext(&authzContext)
 
 	if op.Check.ServiceID == "" {

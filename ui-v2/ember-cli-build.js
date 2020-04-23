@@ -20,7 +20,7 @@ module.exports = function(defaults) {
       includePolyfill: true
     },
     'ember-cli-string-helpers': {
-      only: ['capitalize', 'lowercase', 'truncate', 'uppercase']
+      only: ['capitalize', 'lowercase', 'truncate', 'uppercase', 'trim']
     },
     'ember-cli-math-helpers': {
       only: ['div']

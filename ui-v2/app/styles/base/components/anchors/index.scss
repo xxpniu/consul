@@ -19,6 +19,7 @@
 }
 %anchor {
   @extend %anchor-decoration;
+  cursor: pointer;
 }
 %anchor:hover,
 %anchor:focus {
@@ -26,4 +27,5 @@
 }
 %anchor:active {
   @extend %anchor-active;
+  outline: 0;
 }

@@ -31,6 +31,21 @@ export default Serializer.extend(WithPolicies, WithRoles, {
     }
     return data;
   },
+  respondForSelf: function(respond, query) {
+    return this.respondForQueryRecord(
+      cb =>
+        respond((headers, body) =>
+          cb(
+            {
+              ['Cache-Control']: 'no-store',
+              ...headers,
+            },
+            body
+          )
+        ),
+      query
+    );
+  },
   respondForUpdateRecord: function(respond, serialized, data) {
     return this._super(
       cb =>

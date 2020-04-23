@@ -18,3 +18,13 @@ Feature: dc / acls / tokens / login
     headers:
       X-Consul-Token: something
     ---
+  Scenario: Logging into the ACLs login page with oauth
+    Given 1 datacenter model with the value "dc-1"
+    And the url "/v1/acl/tokens" responds with a 403 status
+    When I visit the tokens page for yaml
+    ---
+    dc: dc-1
+    ---
+    Then the url should be /dc-1/acls/tokens
+    And I click oauth
+    Then pause for 5000

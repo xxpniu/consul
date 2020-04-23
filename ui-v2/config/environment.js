@@ -3,6 +3,11 @@ const fs = require('fs');
 const path = require('path');
 module.exports = function(environment, $ = process.env) {
   let ENV = {
+    torii: {
+      providers: {
+        'oauth2-consul': {},
+      },
+    },
     modulePrefix: 'consul-ui',
     environment,
     rootURL: '/ui/',
@@ -69,6 +74,7 @@ module.exports = function(environment, $ = process.env) {
     CONSUL_BINARY_TYPE: process.env.CONSUL_BINARY_TYPE ? process.env.CONSUL_BINARY_TYPE : 'oss',
     CONSUL_ACLS_ENABLED: false,
     CONSUL_NSPACES_ENABLED: false,
+    CONSUL_SSO_ENABLED: false,
 
     CONSUL_HOME_URL: 'https://www.consul.io',
     CONSUL_REPO_ISSUES_URL: 'https://github.com/hashicorp/consul/issues/new/choose',
@@ -87,6 +93,10 @@ module.exports = function(environment, $ = process.env) {
         CONSUL_NSPACES_ENABLED:
           typeof $['CONSUL_NSPACES_ENABLED'] !== 'undefined'
             ? !!JSON.parse(String($['CONSUL_NSPACES_ENABLED']).toLowerCase())
+            : true,
+        CONSUL_SSO_ENABLED:
+          typeof $['CONSUL_SSO_ENABLED'] !== 'undefined'
+            ? !!JSON.parse(String($['CONSUL_SSO_ENABLED']).toLowerCase())
             : true,
         '@hashicorp/ember-cli-api-double': {
           'auto-import': false,
@@ -107,6 +117,7 @@ module.exports = function(environment, $ = process.env) {
     case environment === 'staging':
       ENV = Object.assign({}, ENV, {
         CONSUL_NSPACES_ENABLED: true,
+        CONSUL_SSO_ENABLED: true,
         '@hashicorp/ember-cli-api-double': {
           enabled: true,
           endpoints: {
@@ -118,6 +129,7 @@ module.exports = function(environment, $ = process.env) {
     case environment === 'production':
       ENV = Object.assign({}, ENV, {
         CONSUL_ACLS_ENABLED: '{{.ACLsEnabled}}',
+        CONSUL_SSO_ENABLED: '{{.SSOEnabled}}',
         CONSUL_NSPACES_ENABLED:
           '{{ if .NamespacesEnabled }}{{.NamespacesEnabled}}{{ else }}false{{ end }}',
       });

@@ -141,6 +141,7 @@ export default Serializer.extend({
   },
   normalizeMeta: function(store, primaryModelClass, headers, payload, id, requestType) {
     const meta = {
+      cacheControl: headers['cache-control'],
       cursor: headers[HTTP_HEADERS_INDEX],
       dc: headers[HTTP_HEADERS_DATACENTER.toLowerCase()],
       nspace: headers[HTTP_HEADERS_NAMESPACE.toLowerCase()],

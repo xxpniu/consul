@@ -132,7 +132,7 @@ export default Adapter.extend({
         return adapter.requestForSelf(request, serialized, data);
       },
       function(serializer, respond, serialized, data) {
-        return serializer.respondForQueryRecord(respond, serialized, data);
+        return serializer.respondForSelf(respond, serialized, data);
       },
       unserialized,
       type.modelName

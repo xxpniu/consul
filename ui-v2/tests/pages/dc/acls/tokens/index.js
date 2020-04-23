@@ -13,6 +13,7 @@ export default function(
     creatable({
       visit: visitable('/:dc/acls/tokens'),
       update: text('[data-test-notification-update]'),
+      oauth: clickable('[data-test-oauth]'),
       tokens: collection(
         '[data-test-tabular-row]',
         deletable({

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pascaldekloe/goe/verify"
+	"github.com/stretchr/testify/require"
 )
 
 // TestParseFlags tests whether command line flags are properly parsed
@@ -17,6 +18,7 @@ func TestParseFlags(t *testing.T) {
 	tests := []struct {
 		args  []string
 		flags Flags
+		extra []string
 		err   error
 	}{
 		{},
@@ -82,7 +84,8 @@ func TestParseFlags(t *testing.T) {
 		},
 		{
 			args:  []string{`-bootstrap`, `true`},
-			flags: Flags{Config: Config{Bootstrap: pBool(true)}, Args: []string{"true"}},
+			flags: Flags{Config: Config{Bootstrap: pBool(true)}},
+			extra: []string{"true"},
 		},
 		{
 			args: []string{`-primary-gateway`, `foo.local`, `-primary-gateway`, `bar.local`},
@@ -101,7 +104,7 @@ func TestParseFlags(t *testing.T) {
 			if got, want := err, tt.err; !reflect.DeepEqual(got, want) {
 				t.Fatalf("got error %v want %v", got, want)
 			}
-			flags.Args = fs.Args()
+			require.ElementsMatch(t, fs.Args(), tt.extra)
 			if !verify.Values(t, "flag", flags, tt.flags) {
 				t.FailNow()
 			}

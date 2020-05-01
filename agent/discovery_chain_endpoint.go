@@ -90,17 +90,9 @@ func (s *HTTPServer) DiscoveryChainRead(resp http.ResponseWriter, req *http.Requ
 
 // discoveryChainReadRequest is the API variation of structs.DiscoveryChainRequest
 type discoveryChainReadRequest struct {
-	OverrideMeshGateway    structs.MeshGatewayConfig
-	OverrideProtocol       string
-	OverrideConnectTimeout time.Duration
-}
-
-func (d discoveryChainReadRequest) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"override_mesh_gateway":    "overridemeshgateway",
-		"override_protocol":        "overrideprotocol",
-		"override_connect_timeout": "overrideconnecttimeout",
-	}
+	OverrideMeshGateway    structs.MeshGatewayConfig `alias:"override_mesh_gateway"`
+	OverrideProtocol       string                    `alias:"override_protocol"`
+	OverrideConnectTimeout time.Duration             `alias:"override_connect_timeout"`
 }
 
 // discoveryChainReadResponse is the API variation of structs.DiscoveryChainResponse

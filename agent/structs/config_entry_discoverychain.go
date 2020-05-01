@@ -260,22 +260,13 @@ func (m *ServiceRouteMatch) IsEmpty() bool {
 
 // ServiceRouteHTTPMatch is a set of http-specific match criteria.
 type ServiceRouteHTTPMatch struct {
-	PathExact  string `json:",omitempty"`
-	PathPrefix string `json:",omitempty"`
-	PathRegex  string `json:",omitempty"`
+	PathExact  string `json:",omitempty" alias:"path_exact"`
+	PathPrefix string `json:",omitempty" alias:"path_prefix"`
+	PathRegex  string `json:",omitempty" alias:"path_regex"`
 
 	Header     []ServiceRouteHTTPMatchHeader     `json:",omitempty"`
-	QueryParam []ServiceRouteHTTPMatchQueryParam `json:",omitempty"`
+	QueryParam []ServiceRouteHTTPMatchQueryParam `json:",omitempty" alias:"query_param"`
 	Methods    []string                          `json:",omitempty"`
-}
-
-func (m ServiceRouteHTTPMatch) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"path_exact":  "pathexact",
-		"path_prefix": "pathprefix",
-		"path_regex":  "pathregex",
-		"query_param": "queryparam",
-	}
 }
 
 func (m ServiceRouteHTTPMatch) IsEmpty() bool {
@@ -317,7 +308,7 @@ type ServiceRouteDestination struct {
 	//
 	// If this field is specified then this route is ineligible for further
 	// splitting.
-	ServiceSubset string `json:",omitempty"`
+	ServiceSubset string `json:",omitempty" alias:"service_subset"`
 
 	// Namespace is the namespace to resolve the service from instead of the
 	// current namespace. If empty the current namespace is assumed.
@@ -329,35 +320,24 @@ type ServiceRouteDestination struct {
 	// PrefixRewrite allows for the proxied request to have its matching path
 	// prefix modified before being sent to the destination. Described more
 	// below in the envoy implementation section.
-	PrefixRewrite string `json:",omitempty"`
+	PrefixRewrite string `json:",omitempty" alias:"prefix_rewrite"`
 
 	// RequestTimeout is the total amount of time permitted for the entire
 	// downstream request (and retries) to be processed.
-	RequestTimeout time.Duration `json:",omitempty"`
+	RequestTimeout time.Duration `json:",omitempty" alias:"request_timeout"`
 
 	// NumRetries is the number of times to retry the request when a retryable
 	// result occurs. This seems fairly proxy agnostic.
-	NumRetries uint32 `json:",omitempty"`
+	NumRetries uint32 `json:",omitempty" alias:"num_retries"`
 
 	// RetryOnConnectFailure allows for connection failure errors to trigger a
 	// retry. This should be expressible in other proxies as it's just a layer
 	// 4 failure bubbling up to layer 7.
-	RetryOnConnectFailure bool `json:",omitempty"`
+	RetryOnConnectFailure bool `json:",omitempty" alias:"retry_on_connect_failure"`
 
 	// RetryOnStatusCodes is a flat list of http response status codes that are
 	// eligible for retry. This again should be feasible in any sane proxy.
-	RetryOnStatusCodes []uint32 `json:",omitempty"`
-}
-
-func (e *ServiceRouteDestination) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"service_subset":           "servicesubset",
-		"prefix_rewrite":           "prefixrewrite",
-		"request_timeout":          "requesttimeout",
-		"num_retries":              "numretries",
-		"retry_on_connect_failure": "retryonconnectfailure",
-		"retry_on_status_codes":    "retryonstatuscodes",
-	}
+	RetryOnStatusCodes []uint32 `json:",omitempty" alias:"retry_on_status_codes"`
 }
 
 func (e *ServiceRouteDestination) MarshalJSON() ([]byte, error) {
@@ -596,7 +576,7 @@ type ServiceSplit struct {
 	//
 	// If this field is specified then this route is ineligible for further
 	// splitting.
-	ServiceSubset string `json:",omitempty"`
+	ServiceSubset string `json:",omitempty" alias:"service_subset"`
 
 	// Namespace is the namespace to resolve the service from instead of the
 	// current namespace. If empty the current namespace is assumed (optional).
@@ -604,12 +584,6 @@ type ServiceSplit struct {
 	// If this field is specified then this route is ineligible for further
 	// splitting.
 	Namespace string `json:",omitempty"`
-}
-
-func (s ServiceSplit) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"service_subset": "servicesubset",
-	}
 }
 
 // ServiceResolverConfigEntry defines which instances of a service should
@@ -630,7 +604,7 @@ type ServiceResolverConfigEntry struct {
 
 	// DefaultSubset is the subset to use when no explicit subset is
 	// requested. If empty the unnamed subset is used.
-	DefaultSubset string `json:",omitempty"`
+	DefaultSubset string `json:",omitempty" alias:"default_subset"`
 
 	// Subsets is a map of subset name to subset definition for all
 	// usable named subsets of this service. The map key is the name
@@ -663,17 +637,10 @@ type ServiceResolverConfigEntry struct {
 
 	// ConnectTimeout is the timeout for establishing new network connections
 	// to this service.
-	ConnectTimeout time.Duration `json:",omitempty"`
+	ConnectTimeout time.Duration `json:",omitempty" alias:"connect_timeout"`
 
 	EnterpriseMeta `hcl:",squash" mapstructure:",squash"`
 	RaftIndex
-}
-
-func (e *ServiceResolverConfigEntry) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"connect_timeout": "connecttimeout",
-		"default_subset":  "defaultsubset",
-	}
 }
 
 func (e *ServiceResolverConfigEntry) MarshalJSON() ([]byte, error) {
@@ -917,13 +884,7 @@ type ServiceResolverSubset struct {
 	// to true, only instances with checks in the passing state will be
 	// returned. (behaves identically to the similarly named field on prepared
 	// queries).
-	OnlyPassing bool `json:",omitempty"`
-}
-
-func (s ServiceResolverSubset) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"only_passing": "onlypassing",
-	}
+	OnlyPassing bool `json:",omitempty" alias:"only_passing"`
 }
 
 type ServiceResolverRedirect struct {
@@ -937,7 +898,7 @@ type ServiceResolverRedirect struct {
 	//
 	// If this is specified at least one of Service, Datacenter, or Namespace
 	// should be configured.
-	ServiceSubset string `json:",omitempty"`
+	ServiceSubset string `json:",omitempty" alias:"service_subset"`
 
 	// Namespace is the namespace to resolve the service from instead of the
 	// current one (optional).
@@ -946,12 +907,6 @@ type ServiceResolverRedirect struct {
 	// Datacenter is the datacenter to resolve the service from instead of the
 	// current one (optional).
 	Datacenter string `json:",omitempty"`
-}
-
-func (s ServiceResolverRedirect) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"service_subset": "servicesubset",
-	}
 }
 
 // There are some restrictions on what is allowed in here:
@@ -971,7 +926,7 @@ type ServiceResolverFailover struct {
 	// requested service is used (optional).
 	//
 	// This is a DESTINATION during failover.
-	ServiceSubset string `json:",omitempty"`
+	ServiceSubset string `json:",omitempty" alias:"service_subset"`
 
 	// Namespace is the namespace to resolve the requested service from to form
 	// the failover group of instances. If empty the current namespace is used
@@ -986,12 +941,6 @@ type ServiceResolverFailover struct {
 	//
 	// This is a DESTINATION during failover.
 	Datacenters []string `json:",omitempty"`
-}
-
-func (s ServiceResolverFailover) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"service_subset": "servicesubset",
-	}
 }
 
 type discoveryChainConfigEntry interface {

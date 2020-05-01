@@ -8,76 +8,87 @@ import (
 	"strings"
 )
 
-// KeyTranslator identifies a structure as one which should have its keys
-// translated by HookTranslateKeys.
-type KeyTranslator interface {
-	// DecodeKeyMapping must return a mapping of:
-	//     Lower case deprecated key -> canonical key
-	// If the data contains a key which matches the deprecated key, the value
-	// for that key is moved to the canonical key. The deprecated key is matched
-	// case-insensitive.
-	// If the canonical key already exists in the data, the deprecated key is
-	// not modified.
-	DecodeKeyMapping() map[string]string
-}
-
-var typeOfKeyTranslator = reflect.TypeOf((*KeyTranslator)(nil)).Elem()
-
 // HookTranslateKeys is a mapstructure decode hook which translates keys in a
-// map to their canonical value. Implement KeyTranslator on a struct to
-// have HookTranslateKeys translate keys. See KeyTranslator for more details.
+// map to their canonical value.
+//
+// Any struct field with a field tag of `alias` may be loaded from any of the
+// values keyed by any of the aliases. A field may have one or more alias.
+// Aliases must be lowercase, as keys are compared case-insensitive.
+//
+// Example alias tag:
+//    MyField []string `alias:"old_field_name,otherfieldname"`
 //
 // This hook should ONLY be used to maintain backwards compatibility with
-// deprecated keys. For new structures use struct tags to set the desired
-// serialization key.
+// deprecated keys. For new structures use mapstructure struct tags to set the
+// desired serialization key.
 //
-// TODO: If field aliases were identified as struct tags, instead of a map
-// returned from a method on the struct, we could avoid creating instances of
-// the type.
+// IMPORTANT: This function assumes that mapstructure is being used with the
+// default struct field tag of `mapstructure`. If mapstructure.DecoderConfig.TagName
+// is set to a different value this function will need to be parameterized with
+// that value to correctly find the canonical data key.
 func HookTranslateKeys(_, to reflect.Type, data interface{}) (interface{}, error) {
-	// When the target is a pointer, mapstructure will call the hook again with
-	// the struct. Return immediately if target is a pointer to avoid doing the
-	// work twice.
-	if to.Kind() == reflect.Ptr {
+	// Return immediately if target is not a struct, as only structs can have
+	// field tags. If the target is a pointer to a struct, mapstructure will call
+	// the hook again with the struct.
+	if to.Kind() != reflect.Struct {
 		return data, nil
 	}
 
 	// Avoid doing any work if data is not a map
-	target, ok := data.(map[string]interface{})
+	source, ok := data.(map[string]interface{})
 	if !ok {
 		return data, nil
 	}
 
-	var translator KeyTranslator
-	switch {
-	case to.Implements(typeOfKeyTranslator):
-		// The KeyTranslator interface is implemented on the struct type
-		translator = reflect.Zero(to).Interface().(KeyTranslator)
-	case reflect.PtrTo(to).Implements(typeOfKeyTranslator):
-		// The KeyTranslator interface is implemented on the pointer type
-		translator = reflect.New(to).Interface().(KeyTranslator)
-	default:
-		return data, nil
-	}
-
-	rules := translator.DecodeKeyMapping()
-	for k, v := range target {
+	rules := translationsForType(to)
+	for k, v := range source {
 		lowerK := strings.ToLower(k)
 		canonKey, ok := rules[lowerK]
 		if !ok {
 			continue
 		}
+		delete(source, k)
 
 		// if there is a value for the canonical key then keep it
-		if _, ok := target[canonKey]; ok {
+		if _, ok := source[canonKey]; ok {
+			continue
+		}
+		source[canonKey] = v
+	}
+	return source, nil
+}
+
+// TODO: could be cached if it is too slow
+func translationsForType(to reflect.Type) map[string]string {
+	translations := map[string]string{}
+	for i := 0; i < to.NumField(); i++ {
+		field := to.Field(i)
+		tag, ok := field.Tag.Lookup("alias")
+		if !ok {
 			continue
 		}
 
-		// otherwise translate to the canonical key
-		delete(target, k)
-		target[canonKey] = v
+		canonKey := strings.ToLower(canonicalFieldKey(field))
+		for _, alias := range strings.Split(tag, ",") {
+			translations[strings.ToLower(alias)] = canonKey
+		}
 	}
-	return target, nil
+	return translations
+}
+
+func canonicalFieldKey(field reflect.StructField) string {
+	tag, ok := field.Tag.Lookup("mapstructure")
+	if !ok {
+		return field.Name
+	}
+	parts := strings.SplitN(tag, ",", 2)
+	switch {
+	case len(parts) < 1:
+		return field.Name
+	case parts[0] == "":
+		return field.Name
+	}
+	return parts[0]
 }
 
 var typeOfEmptyInterface = reflect.TypeOf((*interface{})(nil)).Elem()

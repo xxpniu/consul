@@ -54,15 +54,9 @@ type IngressService struct {
 	// ServiceSubset declares the specific service subset to which traffic should
 	// be sent. This must match an existing service subset declared in a
 	// service-resolver config entry.
-	ServiceSubset string
+	ServiceSubset string `alias:"service_subset"`
 
 	EnterpriseMeta `hcl:",squash" mapstructure:",squash"`
-}
-
-func (i IngressService) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"service_subset": "servicesubset",
-	}
 }
 
 func (e *IngressGatewayConfigEntry) GetKind() string {
@@ -196,25 +190,17 @@ type LinkedService struct {
 
 	// CAFile is the optional path to a CA certificate to use for TLS connections
 	// from the gateway to the linked service
-	CAFile string `json:",omitempty"`
+	CAFile string `json:",omitempty" alias:"ca_file"`
 
 	// CertFile is the optional path to a client certificate to use for TLS connections
 	// from the gateway to the linked service
-	CertFile string `json:",omitempty"`
+	CertFile string `json:",omitempty" alias:"cert_file"`
 
 	// KeyFile is the optional path to a private key to use for TLS connections
 	// from the gateway to the linked service
-	KeyFile string `json:",omitempty"`
+	KeyFile string `json:",omitempty" alias:"key_file"`
 
 	EnterpriseMeta `hcl:",squash" mapstructure:",squash"`
-}
-
-func (l LinkedService) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"ca_file":   "cafile",
-		"cert_file": "certfile",
-		"key_file":  "keyfile",
-	}
 }
 
 func (e *TerminatingGatewayConfigEntry) GetKind() string {

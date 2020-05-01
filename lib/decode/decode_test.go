@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/hashicorp/hcl"
@@ -54,7 +55,7 @@ func TestHookTranslateKeys(t *testing.T) {
 				"PTR": map[string]interface{}{
 					"None":      "no translation",
 					"old_THREE": "value3",
-					"old_four":  "value4",
+					"oldfour":   "value4",
 				},
 			},
 			expected: Config{
@@ -142,30 +143,15 @@ type Config struct {
 }
 
 type TypeStruct struct {
-	One  string
-	Two  string
+	One  string `alias:"oldone"`
+	Two  string `alias:"oldtwo"`
 	None string
 }
 
-func (m TypeStruct) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"oldone": "One",
-		"oldtwo": "two",
-	}
-}
-
 type TypePtrToStruct struct {
-	Three string
-	Four  string
+	Three string `alias:"old_three"`
+	Four  string `alias:"old_four,oldfour"`
 	None  string
-}
-
-func (m *TypePtrToStruct) DecodeKeyMapping() map[string]string {
-	return map[string]string{
-		"old_three": "Three",
-		"old_four":  "four",
-		"oldfour":   "four",
-	}
 }
 
 func TestHookTranslateKeys_TargetStructHasPointerReceiver(t *testing.T) {
@@ -190,6 +176,25 @@ func TestHookTranslateKeys_TargetStructHasPointerReceiver(t *testing.T) {
 	}
 	require.NoError(t, decoder.Decode(data))
 	require.Equal(t, expected, target, "decode metadata: %#v", md)
+}
+
+type translateExample struct {
+	FieldDefaultCanonical        string `alias:"first"`
+	FieldWithMapstructureTag     string `alias:"second" mapstructure:"field_with_mapstruct_tag"`
+	FieldWithMapstructureTagOmit string `mapstructure:"field_with_mapstruct_omit,omitempty" alias:"third"`
+	FieldWithEmptyTag            string `mapstructure:"" alias:"forth"`
+}
+
+func TestTranslationsForType(t *testing.T) {
+	to := reflect.TypeOf(translateExample{})
+	actual := translationsForType(to)
+	expected := map[string]string{
+		"first":  "fielddefaultcanonical",
+		"second": "field_with_mapstruct_tag",
+		"third":  "field_with_mapstruct_omit",
+		"forth":  "fieldwithemptytag",
+	}
+	require.Equal(t, expected, actual)
 }
 
 type nested struct {

@@ -17,79 +17,79 @@ import (
 func TestParseFlags(t *testing.T) {
 	tests := []struct {
 		args  []string
-		flags Flags
+		flags BuilderOpts
 		extra []string
 		err   error
 	}{
 		{},
 		{
 			args:  []string{`-bind`, `a`},
-			flags: Flags{Config: Config{BindAddr: pString("a")}},
+			flags: BuilderOpts{Config: Config{BindAddr: pString("a")}},
 		},
 		{
 			args:  []string{`-bootstrap`},
-			flags: Flags{Config: Config{Bootstrap: pBool(true)}},
+			flags: BuilderOpts{Config: Config{Bootstrap: pBool(true)}},
 		},
 		{
 			args:  []string{`-bootstrap=true`},
-			flags: Flags{Config: Config{Bootstrap: pBool(true)}},
+			flags: BuilderOpts{Config: Config{Bootstrap: pBool(true)}},
 		},
 		{
 			args:  []string{`-bootstrap=false`},
-			flags: Flags{Config: Config{Bootstrap: pBool(false)}},
+			flags: BuilderOpts{Config: Config{Bootstrap: pBool(false)}},
 		},
 		{
 			args:  []string{`-config-file`, `a`, `-config-dir`, `b`, `-config-file`, `c`, `-config-dir`, `d`},
-			flags: Flags{ConfigFiles: []string{"a", "b", "c", "d"}},
+			flags: BuilderOpts{ConfigFiles: []string{"a", "b", "c", "d"}},
 		},
 		{
 			args:  []string{`-datacenter`, `a`},
-			flags: Flags{Config: Config{Datacenter: pString("a")}},
+			flags: BuilderOpts{Config: Config{Datacenter: pString("a")}},
 		},
 		{
 			args:  []string{`-dns-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{DNS: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{DNS: pInt(1)}}},
 		},
 		{
 			args:  []string{`-grpc-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{GRPC: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{GRPC: pInt(1)}}},
 		},
 		{
 			args:  []string{`-http-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{HTTP: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{HTTP: pInt(1)}}},
 		},
 		{
 			args:  []string{`-https-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{HTTPS: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{HTTPS: pInt(1)}}},
 		},
 		{
 			args:  []string{`-serf-lan-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{SerfLAN: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{SerfLAN: pInt(1)}}},
 		},
 		{
 			args:  []string{`-serf-wan-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{SerfWAN: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{SerfWAN: pInt(1)}}},
 		},
 		{
 			args:  []string{`-server-port`, `1`},
-			flags: Flags{Config: Config{Ports: Ports{Server: pInt(1)}}},
+			flags: BuilderOpts{Config: Config{Ports: Ports{Server: pInt(1)}}},
 		},
 		{
 			args:  []string{`-join`, `a`, `-join`, `b`},
-			flags: Flags{Config: Config{StartJoinAddrsLAN: []string{"a", "b"}}},
+			flags: BuilderOpts{Config: Config{StartJoinAddrsLAN: []string{"a", "b"}}},
 		},
 		{
 			args:  []string{`-node-meta`, `a:b`, `-node-meta`, `c:d`},
-			flags: Flags{Config: Config{NodeMeta: map[string]string{"a": "b", "c": "d"}}},
+			flags: BuilderOpts{Config: Config{NodeMeta: map[string]string{"a": "b", "c": "d"}}},
 		},
 		{
 			args:  []string{`-bootstrap`, `true`},
-			flags: Flags{Config: Config{Bootstrap: pBool(true)}},
+			flags: BuilderOpts{Config: Config{Bootstrap: pBool(true)}},
 			extra: []string{"true"},
 		},
 		{
 			args: []string{`-primary-gateway`, `foo.local`, `-primary-gateway`, `bar.local`},
-			flags: Flags{Config: Config{PrimaryGateways: []string{
+			flags: BuilderOpts{Config: Config{PrimaryGateways: []string{
 				"foo.local", "bar.local",
 			}}},
 		},
@@ -97,7 +97,7 @@ func TestParseFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
-			flags := Flags{}
+			flags := BuilderOpts{}
 			fs := flag.NewFlagSet("", flag.ContinueOnError)
 			AddFlags(fs, &flags)
 			err := fs.Parse(tt.args)

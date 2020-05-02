@@ -60,6 +60,9 @@ func (c *cmd) Run(args []string) int {
 		c.UI.Error(fmt.Sprintf("Config validation failed: %v", err.Error()))
 		return 1
 	}
+	for _, w := range b.Warnings {
+		c.UI.Warn(w)
+	}
 	if !c.quiet {
 		c.UI.Output("Configuration is valid!")
 	}

@@ -452,6 +452,9 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				writeFile(filepath.Join(dataDir, "conf", "valid.json"), []byte(`{"datacenter":"a"}`))
 				writeFile(filepath.Join(dataDir, "conf", "invalid.skip"), []byte(`NOPE`))
 			},
+			warns: []string{
+				"skipping file " + filepath.Join(dataDir, "conf", "invalid.skip") + ", extension must be .hcl or .json, or config format must be set",
+			},
 		},
 		{
 			desc: "-config-format=json",

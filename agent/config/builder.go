@@ -107,7 +107,7 @@ func NewBuilder(opts BuilderOpts) (*Builder, error) {
 	slices, values := b.splitSlicesAndValues(opts.Config)
 	b.Head = append(b.Head, newSource("flags.slices", slices))
 	for _, path := range opts.ConfigFiles {
-		sources, err := sourcesFromPath(path, opts)
+		sources, err := b.sourcesFromPath(path, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func NewBuilder(opts BuilderOpts) (*Builder, error) {
 // sourcesFromPath reads a single config file or all files in a directory (but
 // not its sub-directories) and returns Sources created from the
 // files.
-func sourcesFromPath(path string, options BuilderOpts) ([]Source, error) {
+func (b *Builder) sourcesFromPath(path string, options BuilderOpts) ([]Source, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: Open failed on %s. %s", path, err)
@@ -145,7 +145,7 @@ func sourcesFromPath(path string, options BuilderOpts) ([]Source, error) {
 
 	if !fi.IsDir() {
 		if !shouldParseFile(path, options.ConfigFormat) {
-			// TODO: log warning
+			b.warn("skipping file %v, extension must be .hcl or .json, or config format must be set", path)
 			return nil, nil
 		}
 
@@ -185,7 +185,7 @@ func sourcesFromPath(path string, options BuilderOpts) ([]Source, error) {
 		}
 
 		if !shouldParseFile(fp, options.ConfigFormat) {
-			// TODO: log warning
+			b.warn("skipping file %v, extension must be .hcl or .json, or config format must be set", fp)
 			continue
 		}
 		src, err := newSourceFromFile(fp, options.ConfigFormat)
@@ -250,9 +250,6 @@ func (b *Builder) BuildAndValidate() (RuntimeConfig, error) {
 // warnings can still contain deprecation or format warnings that should
 // be presented to the user.
 func (b *Builder) Build() (rt RuntimeConfig, err error) {
-	b.err = nil
-	b.Warnings = nil
-
 	// TODO: move to NewBuilder to remove Builder.options field
 	configFormat := b.options.ConfigFormat
 	if configFormat != "" && configFormat != "json" && configFormat != "hcl" {

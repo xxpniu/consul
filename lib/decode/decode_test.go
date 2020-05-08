@@ -274,6 +274,8 @@ item {
 }
 
 func TestHookNormalizeHCLNestedBlocks_IgnoresOpaqueConfigMaps(t *testing.T) {
+	t.Skip("proper handling of opaque config is disable for now to preserve legacy behaviour")
+
 	source := `
 item {
     name = "first"
